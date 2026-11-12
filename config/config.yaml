@@ -1,0 +1,42 @@
+# TPshop 测试环境配置
+# 说明：Excel 中的 324 / 135 / HM_2023_test 是文档示例值，本环境以实际数据为准。
+base_url: "http://192.168.136.132"
+timeout: 15
+
+# 固定图形验证码（该测试环境后门，一次性使用；每次登录/注册前必须重新获取）
+verify_code: "8888"
+
+# 自动化测试数据标记：新注册手机号统一使用该前缀，便于按前缀定期清理
+test_data:
+  mobile_prefix: "199000"
+
+# 前台主账号（存在收货地址 135，用于跨用户/越权类用例）
+front:
+  username: "13812000001"
+  password: "123456"
+
+# 后台账号
+admin:
+  username: "admin"
+  password: "123456"
+
+# 商品与下单参数（本环境 goods_id=1；item_id 为加购默认规格，order_item_ids 为下单轮换池）
+goods:
+  goods_id: 1
+  item_id: 278
+  # 下单专用规格池：按库存轮换，避免高频回归把一个规格的库存打空
+  order_item_ids: [279, 281, 282, 284, 285]
+  address_id: 135
+  auth_code: "TPSHOP"
+  num: 1
+
+# 新注册用户自动创建的收货地址（省/市/区/街道）
+address:
+  consignee: "自动化测试"
+  province: 1
+  city: 2
+  district: 3
+  twon: 4
+  detail: "自动化测试地址 1 号"
+  zipcode: "100000"
+

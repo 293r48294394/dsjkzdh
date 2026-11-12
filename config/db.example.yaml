@@ -1,0 +1,8 @@
+# 测试库连接配置示例：复制为 config/db.yaml 后填写，db.yaml 不要提交到仓库
+# 本环境实际库名是 tpshop3.0（带点，原样填写）
+host: 192.168.136.132
+port: 3306
+user: tp_test
+password: "change_me"
+database: tpshop3.0
+charset: utf8mb4

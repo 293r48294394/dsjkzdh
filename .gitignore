@@ -1,0 +1,13 @@
+# 本地数据库口令，不入库
+config/db.yaml
+
+# 测试清理备份与日志
+backup/
+logs/
+
+# Python / pytest / Allure 产物
+__pycache__/
+*.py[cod]
+.pytest_cache/
+report/
+.idea/

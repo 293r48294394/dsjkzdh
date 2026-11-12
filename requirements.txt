@@ -1,0 +1,6 @@
+requests>=2.31.0
+pytest>=8.0.0
+allure-pytest>=2.13.0
+PyYAML>=6.0
+# 仅 tools/clean_test_data.py（测试数据清理工具）使用
+pymysql>=1.1.0
