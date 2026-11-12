@@ -10,6 +10,7 @@ import pytest
 
 from api.client import ApiClient
 from config.settings import settings
+from utils.data_util import load_data
 from utils.flow_util import (
     admin_login,
     confirm_receipt,
@@ -19,6 +20,8 @@ from utils.flow_util import (
     register_account,
     ship,
 )
+
+COMMON = load_data("common")
 
 
 # ------------------------------------------------------------------ 会话级
@@ -131,7 +134,7 @@ def commented_order(received_order):
         order_id=received_order.id,
         goods_id=received_order.goods_id,
         rec_id=received_order.rec_id,
-        content="自动化测试评价",
+        content=COMMON["comment"]["default"],
     )
     assert resp.json().get("status") == 1, f"评价失败：{resp.text}"
     return received_order

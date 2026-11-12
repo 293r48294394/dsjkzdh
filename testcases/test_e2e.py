@@ -15,10 +15,13 @@ from utils.assert_util import (
     assert_order_sn,
     assert_text_contains,
 )
+from utils.data_util import load_data
 from utils.flow_util import place_order
 
 
 FEATURE = "全链路联调"
+E2E = load_data("e2e")
+COMMON = load_data("common")
 
 
 def title(case_id, text):
@@ -73,7 +76,7 @@ class TestE2E:
                 order_id=order_id,
                 goods_id=1,
                 rec_id=rec_id,
-                content="新用户全链路自动化评价",
+                content=COMMON["comment"]["full_flow"],
             )
             assert_business(resp, expected=1, msg_contains="评论成功")
 
@@ -111,7 +114,7 @@ class TestE2E:
             order_id=shipped_order.id,
             goods_id=shipped_order.goods_id,
             rec_id=shipped_order.rec_id,
-            content="物流很快",
+            content=COMMON["comment"]["logistics"],
         )
         assert_business(resp, expected=1, msg_contains="评论成功")
 
@@ -130,7 +133,7 @@ class TestE2E:
     def test_E2E_008_register_login_add_cart(self, account_factory):
         title("E2E-008", "注册→登录→加购（未下单）")
         account = account_factory(with_address=False)
-        assert_business(account.client.cart.add_goods(goods_num=2), expected=1)
+        assert_business(account.client.cart.add_goods(goods_num=E2E["add_goods_num"]), expected=1)
         page = account.client.cart.cart_page()
         assert_html(page)
         assert "购物车" in page.text
@@ -167,14 +170,14 @@ class TestE2E:
         detail = shipped_order.account.client.order.order_detail(shipped_order.id)
         assert_no_server_error(detail)
         assert any(
-            status in detail.text for status in ("待收货", "已发货", "确认收货")
+            status in detail.text for status in E2E["order_status_words"]
         ), "前台订单详情未同步发货状态"
 
     # ------------------------------------------------------------ 反向/安全
     def test_E2E_013_unregistered_login(self, anon):
         title("E2E-013", "未注册账号直接登录")
         anon.user.get_login_verify()
-        login = anon.user.login(username="13900000099", password="Abc@12345")
+        login = anon.user.login(username=E2E["unregistered"]["username"], password=E2E["unregistered"]["password"])
         assert_business(login, expected=-1, msg_exact="账号不存在!")
 
     @pytest.mark.xfail(
@@ -183,7 +186,7 @@ class TestE2E:
     def test_E2E_013b_add_after_failed_login(self, anon):
         title("E2E-013", "未注册账号登录后尝试加购")
         anon.user.get_login_verify()
-        anon.user.login(username="13900000099", password="Abc@12345")
+        anon.user.login(username=E2E["unregistered"]["username"], password=E2E["unregistered"]["password"])
         assert_business(anon.cart.add_goods(), expected=0)
 
     @pytest.mark.xfail(
@@ -231,7 +234,7 @@ class TestE2E:
             order_id=shipped_order.id,
             goods_id=shipped_order.goods_id,
             rec_id=shipped_order.rec_id,
-            content="未收货评价",
+            content=COMMON["comment"]["before_receipt"],
         )
         assert_no_server_error(resp)
         assert resp.json().get("status") != 1
@@ -242,7 +245,7 @@ class TestE2E:
     def test_E2E_021_order_retry_after_failure(self, buyer):
         title("E2E-021", "提交订单失败后重试")
         assert_business(buyer.client.cart.add_goods(), expected=1)
-        first = buyer.client.cart.submit_order(address_id=999999)
+        first = buyer.client.cart.submit_order(address_id=E2E["invalid_address"])
         assert_business(first, expected=0)
         assert_business(buyer.client.cart.add_goods(), expected=1)
         second = buyer.client.cart.submit_order(address_id=buyer.address_id)
@@ -256,10 +259,10 @@ class TestE2E:
         client = ApiClient()
         phone = new_phone()
         client.user.get_register_verify()
-        first = client.user.register(phone, "Abc@12345", verify_code="0000")
+        first = client.user.register(phone, COMMON["password"], verify_code="0000")
         assert_business(first, expected=-1, msg_contains="验证码")
         client.user.get_register_verify()
-        second = client.user.register(phone, "Abc@12345")
+        second = client.user.register(phone, COMMON["password"])
         assert_business(second, expected=1)
 
     @pytest.mark.xfail(
@@ -303,14 +306,14 @@ class TestE2E:
             order_id=received_order.id,
             goods_id=received_order.goods_id,
             rec_id=received_order.rec_id,
-            content="第一次评价",
+            content=COMMON["comment"]["first"],
         )
         assert first.json().get("status") == 1
         comment = client.order.comment(
             order_id=received_order.id,
             goods_id=received_order.goods_id,
             rec_id=received_order.rec_id,
-            content="重复评价",
+            content=COMMON["comment"]["repeat"],
         )
         assert comment.json().get("status") != 1, "同一订单可重复评价"
 
@@ -318,7 +321,7 @@ class TestE2E:
         title("E2E-032", "支付状态与订单状态一致")
         detail = admin.admin.order_detail(paid_order.id)
         assert_no_server_error(detail)
-        assert any(word in detail.text for word in ("已付款", "已支付")), (
+        assert any(word in detail.text for word in E2E["pay_status_words"]), (
             "后台订单详情未显示已付款"
         )
 

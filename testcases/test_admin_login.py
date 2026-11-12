@@ -1,4 +1,7 @@
-"""后台登录接口用例（对应 Excel ADMLOGIN-001 ~ ADMLOGIN-011）。"""
+"""后台登录接口用例（对应 Excel ADMLOGIN-001 ~ ADMLOGIN-011）。
+
+输入、边界值与预期提示统一放在 `data/admin_login.yaml`。
+"""
 import allure
 import pytest
 
@@ -9,9 +12,11 @@ from utils.assert_util import (
     assert_no_server_error,
 )
 from utils.contracts import ADMIN_LOGIN_SUCCESS
+from utils.data_util import load_data, param_cases
 
 
 FEATURE = "后台登录"
+ADMIN = load_data("admin_login")
 
 
 def title(case_id, text):
@@ -29,37 +34,26 @@ class TestAdminLogin:
         anon.admin.get_verify()
         assert_contract(anon.admin.login(), ADMIN_LOGIN_SUCCESS)
 
-    @pytest.mark.parametrize(
-        "kwargs,case_id,expected_msg",
-        [
-            pytest.param(dict(password="wrong_pwd"), "ADMLOGIN-003", None, id="ADMLOGIN-003"),
-            pytest.param(dict(verify_code="0000"), "ADMLOGIN-004", "验证码错误", id="ADMLOGIN-004"),
-            pytest.param(dict(username="", password=""), "ADMLOGIN-005", "请填写账号密码", id="ADMLOGIN-005"),
-        ],
-    )
-    def test_ADMLOGIN_003_005_login_negative(self, anon, kwargs, case_id, expected_msg):
-        title(case_id, "账号密码/验证码错误或为空")
+    @pytest.mark.parametrize("case", param_cases(ADMIN["login_negative"]))
+    def test_ADMLOGIN_003_005_login_negative(self, anon, case):
+        title(case["id"], case["title"])
         anon.admin.get_verify()
-        resp = anon.admin.login(**kwargs)
+        resp = anon.admin.login(**case["request"])
         assert_no_server_error(resp)
-        assert_business(resp, expected=0, msg_exact=expected_msg)
+        assert_business(
+            resp, expected=case["expect_status"], msg_exact=case["expect_msg"]
+        )
 
-    @pytest.mark.parametrize(
-        "omit",
-        [
-            pytest.param(("username",), id="ADMLOGIN-006-缺username"),
-            pytest.param(("password",), id="ADMLOGIN-007-缺password"),
-        ],
-    )
-    def test_ADMLOGIN_006_007_required(self, anon, omit):
-        title("ADMLOGIN-006/007", f"必填参数缺失（{omit[0]}）")
+    @pytest.mark.parametrize("case", param_cases(ADMIN["required"]))
+    def test_ADMLOGIN_006_007_required(self, anon, case):
+        title("ADMLOGIN-006/007", f"必填参数缺失（{case['field']}）")
         anon.admin.get_verify()
         data = {"username": "admin", "password": "123456", "vertify": "8888"}
-        data.pop(omit[0])
+        data.pop(case["field"])
         resp = anon.admin.post("/index.php?m=Admin&c=Admin&a=login", data=data)
         assert_business(resp, expected=0, msg_exact="请填写账号密码")
 
-    @pytest.mark.parametrize("vertify", ["abcd", "", "123456789"])
+    @pytest.mark.parametrize("vertify", ADMIN["vertify_types"])
     def test_ADMLOGIN_008_vertify_type(self, anon, vertify):
         title("ADMLOGIN-008", f"vertify 类型与边界（{vertify!r}）")
         anon.admin.get_verify()
@@ -70,7 +64,10 @@ class TestAdminLogin:
     def test_ADMLOGIN_010_sql_injection(self, anon):
         title("ADMLOGIN-010", "后台登录 SQL 注入")
         anon.admin.get_verify()
-        resp = anon.admin.login(username="admin' or '1'='1", password="x")
+        payload = ADMIN["sql_injection"]
+        resp = anon.admin.login(
+            username=payload["username"], password=payload["password"]
+        )
         assert_no_server_error(resp)
         assert_business(resp, expected=0)
         assert "url" not in resp.json() or "Index/index" not in (

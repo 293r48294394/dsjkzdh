@@ -1,6 +1,6 @@
 # TPshop 接口自动化测试框架
 
-基于 `Python + Pytest + Requests + Allure` 的接口自动化回归工程，覆盖 TPshop 文档中的 17 个接口、7 个业务模块。
+基于 `Python + Pytest + Requests + Allure` 的接口自动化回归工程，覆盖 TPshop 文档中的 17 个接口、7 个业务模块。环境配置集中在 `config/config.yaml`，测试输入、边界值、预期提示和缺陷标记按模块放在 `data/*.yaml`，由 `utils/data_util.py` 统一加载和参数化。
 
 按《接口测试用例_TPSHOP接口文档V1.0_20261016.xlsx》全部 157 条用例重新评估后，落地 **137 条自动化用例**（99 条稳定通过、37 条缺陷回归、1 条合并），其余 20 条因依赖 DB/产品口径/并发压测/真实验证码环境，未纳入纯接口回归。
 
@@ -31,7 +31,18 @@ pythonProject5/
 │   ├── test_admin_order.py
 │   ├── test_front_order.py
 │   └── test_e2e.py
+├── data/                    # YAML 测试数据（按模块拆分）
+│   ├── common.yaml          # 共用密码、评价内容
+│   ├── auth.yaml
+│   ├── cart.yaml
+│   ├── payment.yaml
+│   ├── admin_login.yaml
+│   ├── admin_order.yaml
+│   ├── front_order.yaml
+│   ├── e2e.yaml
+│   └── README.md            # 数据字段说明
 ├── utils/
+│   ├── data_util.py         # YAML 读取、param_cases、长文本展开
 │   ├── flow_util.py         # 注册新账号、建地址、下单、发货等业务流
 │   ├── assert_util.py       # HTTP/业务码/页面/图片/异常信息断言
 │   ├── contract_util.py     # 轻量 JSON Schema 校验（无第三方依赖）
@@ -58,7 +69,7 @@ pythonProject5/
 | test_e2e.py | E2E-001 ~ E2E-033（可自动化部分） | 26 | 18 | 8 |
 | **合计** | **137 条用例落地** | **175** | **128** | **47** |
 
-> 用例项 175 > 用例 137，是因为参数化（密码 5/6/16/17 位、评分 0/1/5/6、订单号缺失/非法等）和 E2E-013 拆成两条。
+> 用例项 175 > 用例 137，是因为参数化（密码 5/6/16/17 位、评分 0/1/5/6、订单号缺失/非法等）和 E2E-013 拆成两条；参数化输入与预期统一来自 `data/*.yaml`。
 
 全量运行约 2 分钟。
 
@@ -79,13 +90,52 @@ allure serve report/result      # 打开报告
 
 每个 `ApiClient` 持有独立的 `requests.Session`：前台主账号、后台管理员、匿名会话、每个新注册用户互不影响。旧版用类属性共享 Session，注册反向用例会被“注册成功后自动登录”重定向，这是旧套件 3 条失败的主因。
 
-### 2. 数据自造自清，按账号隔离
+### 2. YAML 数据驱动（config 管环境，data 管测试数据）
+
+`config/config.yaml` 只放环境配置；测试输入、边界值、预期业务码/提示、缺陷标记放在 `data/*.yaml`，由 `utils/data_util.py` 统一读取。
+
+以 `data/cart.yaml` 为例：
+
+```yaml
+submit:
+  address_missing:
+    request:
+      omit: [address_id]
+    expect_msg: 请先填写收货人信息
+  take_time:
+    - id: CART-019-非时间戳
+      request: {take_time: "abc"}
+      label: 非时间戳
+      should_pass: false
+      bug: "新缺陷：take_time 非时间戳未被拒绝"
+```
+
+测试侧只保留编排和断言：
+
+```python
+CART = load_data("cart")
+
+@pytest.mark.parametrize("case", param_cases(CART["submit"]["take_time"]))
+def test_CART_019_take_time(self, buyer, case):
+    resp = add_and_submit(buyer.client, **case["request"])
+    assert resp.json()["status"] == (1 if case["should_pass"] else 0)
+```
+
+- `id`：pytest 用例 ID，与 Excel 编号对应；
+- `request`：直接展开为接口参数；
+- `expect_status` / `expect_msg`：业务码与提示；
+- `bug`：填了自动标 `xfail`，修复后 XPASS；
+- 超长文本用 `repeat: {char: "测", times: 2000}`，避免在 YAML 里贴 2000 字。
+
+新增边界值/异常场景时优先改 YAML；只有新流程、新断言才改测试代码。
+
+### 3. 数据自造自清，按账号隔离
 
 - 购物车用例：每个用例新注册一个买家，并自动创建收货地址（辅助接口 `addressSave`，不在 17 个被测接口内），避免 TPshop 购物车只增不减造成串数据。
 - 订单用例：`place_order()` 负责加购 + 下单 + 从 `cart4` 页面提取 `order_id`。
 - 下单规格使用库存轮换池（`goods.order_item_ids`），避免把一个规格的库存打空。
 
-### 3. 订单状态机 fixture
+### 4. 订单状态机 fixture
 
 TPshop 后台付款会把 `order_status` 重置为 0，正确顺序是：
 
@@ -101,13 +151,13 @@ order → paid_order → confirmed_order → shipped_order → received_order �
 
 用例只声明所需状态，不重复编排。
 
-### 4. 契约校验 + 明确断言
+### 5. 契约校验 + 明确断言
 
 - 成功响应统一校验 `status / msg / result` 的字段、类型、格式（如订单号 `^\d{14,20}$`）。
 - 反向用例断言具体业务码与提示，而不是只断言“非 200”。
 - 页面类接口断言关键元素（订单号、`order_id` 隐藏域、发货页 `goods[]`）。
 
-### 5. 已知缺陷用 xfail 管理
+### 6. 已知缺陷用 xfail 管理
 
 ```python
 @pytest.mark.xfail(reason="BUG-01：未发货订单可以直接确认收货", strict=False)
@@ -231,11 +281,12 @@ Linux cron：
 
 ## 新增用例
 
-1. 在对应 `testcases/test_*.py` 中按现有命名加方法，用例编号写进 `pytest` 参数 id 或 Allure title；
-2. 需要新状态时，在 `conftest.py` 增加 fixture，不要在用例里重复写登录/下单；
-3. 新接口封装到 `api/`，不要在用例里直接拼 URL；
-4. 成功响应契约加到 `utils/contracts.py`；
-5. 已确认缺陷加 `@pytest.mark.xfail(reason="BUG-xx ...", strict=False)`。
+1. 参数、边界值、预期业务码/提示优先写进 `data/<模块>.yaml`，用 `param_cases()` 生成参数化用例；
+2. 只有新增流程或新断言，才在 `testcases/test_*.py` 加测试方法，用例编号写进 YAML 的 `id` 或 Allure title；
+3. 需要新状态时，在 `conftest.py` 增加 fixture，不要在用例里重复写登录/下单；
+4. 新接口封装到 `api/`，不要在用例里直接拼 URL；
+5. 成功响应契约加到 `utils/contracts.py`；
+6. 已确认缺陷在 YAML 里加 `bug: "BUG-xx ..."`，会自动 xfail。
 
 
 

@@ -1,8 +1,8 @@
-"""支付验证接口用例（对应 Excel PAY-001 ~ PAY-012）。
+﻿"""支付验证接口用例（对应 Excel PAY-001 ~ PAY-012）。
 
 TPshop 货到付款是伪支付：getCode 只写 pay_code，pay_status 仍为 0，
 真正的付款动作在后台“订单付款”。因此本模块只断言支付入口/页面行为，
-支付成功状态由后台订单用例覆盖。
+支付成功状态由后台订单用例覆盖。输入与预期提示统一放在 `data/payment.yaml`。
 """
 import allure
 import pytest
@@ -12,9 +12,11 @@ from utils.assert_util import (
     assert_no_server_error,
     assert_text_contains,
 )
+from utils.data_util import load_data, param_cases
 
 
 FEATURE = "支付验证"
+PAY = load_data("payment")
 
 
 def title(case_id, text):
@@ -30,36 +32,30 @@ class TestPayment:
         assert "System Error" not in resp.text
 
     def test_PAY_002_pay_radio_missing(self, order):
+        case = PAY["pay_radio_missing"]
         title("PAY-002", "pay_radio 缺失")
-        resp = order.account.client.payment.pay_cod(order.id, omit=("pay_radio",))
+        resp = order.account.client.payment.pay_cod(order.id, **case["request"])
         assert_no_server_error(resp)
-        assert_text_contains(resp, "pay_code")
+        assert_text_contains(resp, case["needle"])
         assert "付款金额" not in resp.text, "pay_radio 缺失仍进入支付页"
 
-    @pytest.mark.xfail(
-        reason="PAY-003 缺陷：未定义支付方式未被拒绝，进入微信支付流程后才失败",
-        strict=False,
+    @pytest.mark.parametrize(
+        "case", param_cases([PAY["pay_radio_invalid"]])
     )
-    def test_PAY_003_pay_radio_invalid(self, order):
+    def test_PAY_003_pay_radio_invalid(self, order, case):
         title("PAY-003", "pay_radio 取值非法（weixin）")
         resp = order.account.client.payment.pay_cod(
-            order.id, pay_radio="pay_code=weixin"
+            order.id, pay_radio=case["value"]
         )
         assert_no_server_error(resp)
         assert_text_contains(resp, "不支持的支付方式")
 
-    @pytest.mark.parametrize(
-        "kwargs,case_id,needle",
-        [
-            pytest.param(dict(omit=("order_id",)), "PAY-004", "非法操作", id="PAY-004-缺order_id"),
-            pytest.param(dict(order_id="999999"), "PAY-005", "非法操作", id="PAY-005-订单不存在"),
-        ],
-    )
-    def test_PAY_004_005_order_id_invalid(self, order, kwargs, case_id, needle):
-        title(case_id, "order_id 缺失或不存在")
-        resp = order.account.client.payment.pay_cod(**kwargs)
+    @pytest.mark.parametrize("case", param_cases(PAY["order_id_invalid"]))
+    def test_PAY_004_005_order_id_invalid(self, order, case):
+        title(case["id"].rsplit("-", 1)[0], "order_id 缺失或不存在")
+        resp = order.account.client.payment.pay_cod(**case["request"])
         assert_no_server_error(resp)
-        assert_text_contains(resp, needle)
+        assert_text_contains(resp, case["needle"])
         assert "付款金额" not in resp.text
 
     @pytest.mark.xfail(
@@ -86,10 +82,7 @@ class TestPayment:
         assert_no_server_error(resp)
         assert "付款金额" not in resp.text, "未登录仍渲染出支付金额"
 
-    @pytest.mark.parametrize(
-        "master_order_sn",
-        ["", "not_exist_sn"],
-    )
+    @pytest.mark.parametrize("master_order_sn", PAY["master_order_sn"])
     def test_PAY_009_master_order_sn(self, order, master_order_sn):
         title("PAY-009", f"master_order_sn 选填校验（{master_order_sn!r}）")
         resp = order.account.client.payment.pay_cod(
@@ -105,7 +98,7 @@ class TestPayment:
 
     def test_PAY_011_payment_status_not_exist(self, order):
         title("PAY-011", "订单号不存在时查看支付状态")
-        resp = order.account.client.payment.payment_status("202299999999999999")
+        resp = order.account.client.payment.payment_status(PAY["invalid_order_sn"])
         assert_no_server_error(resp)
         assert "System Error" not in resp.text
 

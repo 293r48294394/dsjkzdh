@@ -1,9 +1,10 @@
 """注册登录接口用例（对应 Excel AUTH-001 ~ AUTH-036）。
 
 设计说明：
+- 参数、预期业务码/提示、缺陷标记统一放在 `data/auth.yaml`；
 - 每个反向用例使用独立会话，避免“注册成功后会话变成登录态”导致后续请求被重定向；
 - 验证码一次性，每次注册/登录前都重新 GET；
-- 已确认缺陷用 xfail 标记，修复后会以 XPASS 暴露（strict=False，不阻断流水线）。
+- 已确认缺陷在 YAML 中配置 `bug` 字段，自动转成 xfail，修复后 XPASS。
 """
 import allure
 import pytest
@@ -18,17 +19,20 @@ from utils.assert_util import (
 )
 from utils.contracts import LOGIN_SUCCESS, REGISTER_SUCCESS
 from utils.crypto_util import encrypt_password
+from utils.data_util import load_data, param_cases
 from utils.flow_util import new_phone
 
 
 FEATURE = "注册登录"
+AUTH = load_data("auth")
+COMMON = load_data("common")
 
 
 def title(case_id, text):
     allure.dynamic.title(f"{case_id} {text}")
 
 
-def register(client, *, username=None, password="Abc@12345", **kwargs):
+def register(client, *, username=None, password=COMMON["password"], **kwargs):
     client.user.get_register_verify()
     return client.user.register(
         username if username is not None else new_phone(), password, **kwargs
@@ -91,113 +95,61 @@ class TestAuth:
         resp = register(second, username=phone)
         assert_business(resp, expected=-1, msg_exact="该手机号已注册")
 
-    @pytest.mark.parametrize(
-        "kwargs,case_id,expected_msg",
-        [
-            pytest.param(dict(verify_code="0000"), "AUTH-007", "图像验证码错误", id="AUTH-007"),
-            pytest.param(
-                dict(password="Abc@12345", password2="Different1"),
-                "AUTH-008",
-                "两次密码不一致",
-                id="AUTH-008",
-            ),
-        ],
-    )
-    def test_AUTH_007_008_register_negative(self, anon, kwargs, case_id, expected_msg):
-        title(case_id, expected_msg)
-        resp = register(anon, **kwargs)
-        assert_business(resp, expected=-1, msg_exact=expected_msg)
+    @pytest.mark.parametrize("case", param_cases(AUTH["register_negative"]))
+    def test_AUTH_007_008_register_negative(self, anon, case):
+        title(case["id"], case["title"])
+        resp = register(anon, **case["request"])
+        assert_business(
+            resp, expected=case["expect_status"], msg_exact=case["expect_msg"]
+        )
 
-    @pytest.mark.xfail(
-        reason="新缺陷：注册接口未校验 auth_code，缺失/错误仍可注册成功", strict=False
-    )
-    @pytest.mark.parametrize(
-        "kwargs",
-        [
-            pytest.param(dict(omit=("auth_code",)), id="AUTH-009-auth_code缺失"),
-            pytest.param(dict(auth_code="TEST"), id="AUTH-010-auth_code错误"),
-        ],
-    )
-    def test_AUTH_009_010_auth_code(self, anon, kwargs):
-        title("AUTH-009/010", "auth_code 缺失或取值错误")
-        resp = register(anon, **kwargs)
-        assert_business(resp, expected=-1)
+    @pytest.mark.parametrize("case", param_cases(AUTH["auth_code"]))
+    def test_AUTH_009_010_auth_code(self, anon, case):
+        title(case["id"], case["title"])
+        resp = register(anon, **case["request"])
+        assert_business(resp, expected=case["expect_status"])
 
-    @pytest.mark.xfail(
-        reason="新缺陷：注册接口不校验 scene，缺失仍可注册成功", strict=False
-    )
-    def test_AUTH_011_scene_missing(self, anon):
-        title("AUTH-011", "scene 缺失")
-        resp = register(anon, omit=("scene",))
-        assert_business(resp, expected=-1)
+    @pytest.mark.parametrize("case", param_cases([AUTH["scene_missing"]]))
+    def test_AUTH_011_scene_missing(self, anon, case):
+        title(case["id"], case["title"])
+        resp = register(anon, **case["request"])
+        assert_business(resp, expected=case["expect_status"])
 
-    @pytest.mark.parametrize("scene", ["99", "abc"])
-    def test_AUTH_012_scene_invalid(self, anon, scene):
-        title("AUTH-012", f"scene 取值非法（{scene}）")
-        resp = register(anon, scene=scene)
+    @pytest.mark.parametrize("case", param_cases(AUTH["scene_invalid"]))
+    def test_AUTH_012_scene_invalid(self, anon, case):
+        title("AUTH-012", f"scene 取值非法（{case['value']}）")
+        resp = register(anon, scene=case["value"])
         assert_no_server_error(resp)
         assert_business(resp, expected=[1, -1])
 
     def test_AUTH_013_username_missing(self, anon):
         title("AUTH-013", "username 缺失")
         resp = register(anon, omit=("username",))
-        assert_business(resp, expected=-1, msg_exact="请用手机号或邮箱注册")
+        assert_business(
+            resp, expected=-1, msg_exact=AUTH["username_format_msg"]
+        )
 
-    @pytest.mark.parametrize(
-        "username",
-        [
-            pytest.param("abc", id="AUTH-014-非手机号"),
-            pytest.param("138000000000000", id="AUTH-014-超长"),
-            pytest.param("1380000abcd", id="AUTH-014-含字母"),
-        ],
-    )
-    def test_AUTH_014_username_invalid(self, anon, username):
-        title("AUTH-014", f"username 格式非法（{username}）")
-        resp = register(anon, username=username)
-        assert_business(resp, expected=-1, msg_exact="请用手机号或邮箱注册")
+    @pytest.mark.parametrize("case", param_cases(AUTH["username_invalid"]))
+    def test_AUTH_014_username_invalid(self, anon, case):
+        title("AUTH-014", f"username 格式非法（{case['value']}）")
+        resp = register(anon, username=case["value"])
+        assert_business(
+            resp, expected=-1, msg_exact=AUTH["username_format_msg"]
+        )
 
-    @pytest.mark.parametrize(
-        "kwargs,case_id,expected_msg",
-        [
-            pytest.param(dict(omit=("verify_code",)), "AUTH-015", "图像验证码错误", id="AUTH-015"),
-            pytest.param(dict(omit=("password",)), "AUTH-016", "密码不能为空", id="AUTH-016"),
-            pytest.param(dict(omit=("password2",)), "AUTH-017", "两次密码不一致", id="AUTH-017"),
-        ],
-    )
-    def test_AUTH_015_017_required_params(self, anon, kwargs, case_id, expected_msg):
-        title(case_id, f"必填参数缺失（{list(kwargs['omit'])[0]}）")
-        resp = register(anon, **kwargs)
-        assert_business(resp, expected=-1, msg_exact=expected_msg)
+    @pytest.mark.parametrize("case", param_cases(AUTH["required_params"]))
+    def test_AUTH_015_017_required_params(self, anon, case):
+        title(case["id"], f"必填参数缺失（{case['field']}）")
+        resp = register(anon, omit=(case["field"],))
+        assert_business(resp, expected=-1, msg_exact=case["expect_msg"])
 
-    @pytest.mark.parametrize(
-        "length,should_succeed",
-        [
-            pytest.param(
-                5,
-                False,
-                id="AUTH-018-5位",
-                marks=pytest.mark.xfail(
-                    reason="新缺陷：注册未校验密码最小长度 6", strict=False
-                ),
-            ),
-            pytest.param(6, True, id="AUTH-018-6位"),
-            pytest.param(16, True, id="AUTH-018-16位"),
-            pytest.param(
-                17,
-                False,
-                id="AUTH-018-17位",
-                marks=pytest.mark.xfail(
-                    reason="新缺陷：注册未校验密码最大长度 16", strict=False
-                ),
-            ),
-        ],
-    )
-    def test_AUTH_018_password_length(self, anon, length, should_succeed):
-        title("AUTH-018", f"密码长度边界（{length} 位）")
-        password = ("Abc@1234567890xyz" * 2)[:length]
+    @pytest.mark.parametrize("case", param_cases(AUTH["password_lengths"]))
+    def test_AUTH_018_password_length(self, anon, case):
+        title("AUTH-018", f"密码长度边界（{case['length']} 位）")
+        password = ("Abc@1234567890xyz" * 2)[: case["length"]]
         resp = register(anon, password=password)
         assert_no_server_error(resp)
-        assert_business(resp, expected=1 if should_succeed else -1)
+        assert_business(resp, expected=1 if case["should_succeed"] else -1)
 
     def test_AUTH_019_invite_optional(self, anon):
         title("AUTH-019", "invite 选填不传")
@@ -209,8 +161,8 @@ class TestAuth:
         anon.user.get_register_verify()
         payload = (
             f"auth_code=TPSHOP&scene=1&username={new_phone()}&verify_code=8888"
-            f"&password={encrypt_password('Abc@12345')}"
-            f"&password2={encrypt_password('Abc@12345')}&invite="
+            f"&password={encrypt_password(COMMON['password'])}"
+            f"&password2={encrypt_password(COMMON['password'])}&invite="
         )
         resp = anon.user.post(
             "/Home/User/reg.html", data=payload, headers={"Content-Type": None}
@@ -224,7 +176,9 @@ class TestAuth:
     def test_AUTH_022_register_with_invalid_session(self):
         title("AUTH-022", "会话失效时注册")
         client = ApiClient()
-        client.session.cookies.set("PHPSESSID", "invalid_session_id_123")
+        client.session.cookies.set(
+            "PHPSESSID", AUTH["security"]["invalid_session_cookie"]
+        )
         resp = register(client, username=new_phone())
         assert_no_server_error(resp)
         assert_business(resp, expected=-1)
@@ -233,7 +187,7 @@ class TestAuth:
         title("AUTH-023", "注册接口重复提交（5 次）")
         phone = new_phone()
         statuses = []
-        for _ in range(5):
+        for _ in range(AUTH["security"]["duplicate_attempts"]):
             client = ApiClient()
             resp = register(client, username=phone)
             assert_no_server_error(resp)
@@ -245,9 +199,8 @@ class TestAuth:
 
     def test_AUTH_024_register_sql_injection(self, anon):
         title("AUTH-024", "注册参数注入与脚本")
-        resp = register(
-            anon, username="' or 1=1 --", invite="<script>alert(1)</script>"
-        )
+        payload = AUTH["security"]["register_sql_injection"]
+        resp = register(anon, username=payload["username"], invite=payload["invite"])
         assert_no_server_error(resp)
         assert_business(resp, expected=-1)
         assert "SQLSTATE" not in resp.text and "root@" not in resp.text
@@ -256,9 +209,9 @@ class TestAuth:
         title("AUTH-025", "验证码一次性校验")
         client = ApiClient()
         client.user.get_register_verify()
-        first = client.user.register(new_phone(), "Abc@12345", password2="Different1")
+        first = client.user.register(new_phone(), COMMON["password"], password2="Different1")
         assert_business(first, expected=-1, msg_exact="两次密码不一致")
-        second = client.user.register(new_phone(), "Abc@12345")
+        second = client.user.register(new_phone(), COMMON["password"])
         assert_business(second, expected=-1, msg_exact="图像验证码错误")
 
     # ---------------------------------------------------------------- 登录
@@ -281,27 +234,16 @@ class TestAuth:
         resp = anon.user.login()
         assert_contract_no_fields(resp, ["password", "paypwd"])
 
-    @pytest.mark.parametrize(
-        "kwargs,case_id,expected_status,expected_msg",
-        [
-            pytest.param(dict(password="wrong_pwd"), "AUTH-029", -2, "密码错误!", id="AUTH-029"),
-            pytest.param(dict(verify_code="0000"), "AUTH-030", 0, "验证码错误", id="AUTH-030"),
-            pytest.param(
-                dict(username="13900000099"), "AUTH-031", -1, "账号不存在!", id="AUTH-031"
-            ),
-            pytest.param(dict(username=""), "AUTH-032", 0, "请填写账号或密码", id="AUTH-032"),
-            pytest.param(dict(password=""), "AUTH-033", 0, "请填写账号或密码", id="AUTH-033"),
-        ],
-    )
-    def test_AUTH_029_033_login_negative(
-        self, anon, kwargs, case_id, expected_status, expected_msg
-    ):
-        title(case_id, expected_msg)
+    @pytest.mark.parametrize("case", param_cases(AUTH["login_negative"]))
+    def test_AUTH_029_033_login_negative(self, anon, case):
+        title(case["id"], case["title"])
         anon.user.get_login_verify()
-        resp = anon.user.login(**kwargs)
-        assert_business(resp, expected=expected_status, msg_exact=expected_msg)
+        resp = anon.user.login(**case["request"])
+        assert_business(
+            resp, expected=case["expect_status"], msg_exact=case["expect_msg"]
+        )
 
-    @pytest.mark.parametrize("verify_code", ["abc", "1.5", "", "123456789"])
+    @pytest.mark.parametrize("verify_code", AUTH["verify_code_types"])
     def test_AUTH_034_verify_code_type(self, anon, verify_code):
         title("AUTH-034", f"verify_code 类型与边界（{verify_code!r}）")
         anon.user.get_login_verify()
@@ -309,7 +251,7 @@ class TestAuth:
         assert_no_server_error(resp)
         assert_business(resp, expected=0, msg_exact="验证码错误")
 
-    @pytest.mark.parametrize("t", ["", "abc", "0.123456"])
+    @pytest.mark.parametrize("t", AUTH["t_params"])
     def test_AUTH_035_t_param(self, anon, t):
         title("AUTH-035", f"t 参数缺失或非法（{t!r}）")
         anon.user.get_login_verify()
@@ -319,7 +261,8 @@ class TestAuth:
     def test_AUTH_036_login_sql_injection(self, anon):
         title("AUTH-036", "登录接口 SQL 注入")
         anon.user.get_login_verify()
-        resp = anon.user.login(username="' or 1=1 --", password="' or '1'='1")
+        payload = AUTH["security"]["login_sql_injection"]
+        resp = anon.user.login(username=payload["username"], password=payload["password"])
         assert_no_server_error(resp)
         assert_business(resp, expected=-1)
         assert "user_id" not in (resp.json().get("result") or {})

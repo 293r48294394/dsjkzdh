@@ -1,4 +1,7 @@
-"""前台订单接口用例（对应 Excel FORDER-001 ~ FORDER-014）。"""
+"""前台订单接口用例（对应 Excel FORDER-001 ~ FORDER-014）。
+
+评价必填项、评分边界、内容边界与缺陷标记统一放在 `data/front_order.yaml`。
+"""
 import allure
 import pytest
 
@@ -8,22 +11,24 @@ from utils.assert_util import (
     assert_no_server_error,
 )
 from utils.contracts import COMMENT_SUCCESS
+from utils.data_util import expand_text, load_data, param_cases
 
 
 FEATURE = "前台确认订单"
-GOODS = 1
+FRONT = load_data("front_order")
+COMMON = load_data("common")
 
 
 def title(case_id, text):
     allure.dynamic.title(f"{case_id} {text}")
 
 
-def comment(order, content="自动化测试评价", **kwargs):
+def comment(order, content=None, **kwargs):
     return order.account.client.order.comment(
         order_id=order.id,
         goods_id=order.goods_id,
         rec_id=order.rec_id,
-        content=content,
+        content=COMMON["comment"]["default"] if content is None else content,
         **kwargs,
     )
 
@@ -88,28 +93,18 @@ class TestFrontOrder:
         title("FORDER-007", "评价订单成功")
         assert_contract(comment(received_order), COMMENT_SUCCESS)
 
-    @pytest.mark.parametrize(
-        "field",
-        [
-            pytest.param("order_id", id="FORDER-008-缺order_id"),
-            pytest.param("goods_id", id="FORDER-008-缺goods_id"),
-            pytest.param("goods_rank", id="FORDER-008-缺goods_rank"),
-        ],
-    )
-    def test_FORDER_008_comment_required(self, received_order, field):
-        title("FORDER-008", f"评价必填参数缺失（{field}）")
-        kwargs = {"omit": (field,)}
-        if field == "goods_rank":
-            kwargs = {"omit": ("goods_rank",)}
+    @pytest.mark.parametrize("case", param_cases(FRONT["comment_required"]))
+    def test_FORDER_008_comment_required(self, received_order, case):
+        title("FORDER-008", f"评价必填参数缺失（{case['field']}）")
         resp = received_order.account.client.order.comment(
             order_id=received_order.id,
             goods_id=received_order.goods_id,
             rec_id=received_order.rec_id,
-            content="x",
-            **kwargs,
+            content=COMMON["comment"]["short"],
+            omit=(case["field"],),
         )
         assert_no_server_error(resp)
-        assert resp.json().get("status") != 1, f"缺少 {field} 仍评价成功"
+        assert resp.json().get("status") != 1, f"缺少 {case['field']} 仍评价成功"
 
     @pytest.mark.xfail(
         reason="BUG-13：评价内容为空仍然评论成功", strict=False
@@ -125,72 +120,32 @@ class TestFrontOrder:
         assert_no_server_error(resp)
         assert resp.json().get("status") != 1
 
-    @pytest.mark.parametrize(
-        "rank,should_succeed",
-        [
-            pytest.param("0", False, id="FORDER-009-评分0"),
-            pytest.param("1", True, id="FORDER-009-评分1"),
-            pytest.param("5", True, id="FORDER-009-评分5"),
-            pytest.param(
-                "6",
-                False,
-                id="FORDER-009-评分6",
-                marks=pytest.mark.xfail(
-                    reason="BUG-12：评分 6 未被拒绝，直接落库", strict=False
-                ),
-            ),
-        ],
-    )
-    def test_FORDER_009_rank_boundary(self, received_order, rank, should_succeed):
-        title("FORDER-009", f"评分等级边界（{rank}）")
-        resp = comment(received_order, goods_rank=rank)
+    @pytest.mark.parametrize("case", param_cases(FRONT["rank"]))
+    def test_FORDER_009_rank_boundary(self, received_order, case):
+        title("FORDER-009", f"评分等级边界（{case['value']}）")
+        resp = comment(received_order, goods_rank=case["value"])
         assert_no_server_error(resp)
         status = resp.json().get("status")
-        if should_succeed:
+        if case["should_succeed"]:
             assert status == 1, f"评分合法却提交失败：{resp.text}"
         else:
             assert status != 1, f"非法评分未被拒绝：{resp.text}"
 
-
-    @pytest.mark.parametrize(
-        "content,label,should_succeed",
-        [
-            pytest.param(
-                "",
-                "空串",
-                False,
-                id="FORDER-010-空串",
-                marks=pytest.mark.xfail(reason="BUG-13：空评价仍成功", strict=False),
-            ),
-            pytest.param(
-                "测" * 2000,
-                "2000字",
-                False,
-                id="FORDER-010-超长",
-                marks=pytest.mark.xfail(reason="R-02：评价内容无长度限制", strict=False),
-            ),
-            pytest.param(
-                "   ",
-                "纯空格",
-                False,
-                id="FORDER-010-纯空格",
-                marks=pytest.mark.xfail(reason="新缺陷：纯空格评价仍成功", strict=False),
-            ),
-        ],
-    )
-    def test_FORDER_010_content_boundary(self, received_order, content, label, should_succeed):
-        title("FORDER-010", f"评价内容边界（{label}）")
+    @pytest.mark.parametrize("case", param_cases(FRONT["content"]))
+    def test_FORDER_010_content_boundary(self, received_order, case):
+        content = case["value"] if "value" in case else expand_text(case["repeat"])
+        title("FORDER-010", f"评价内容边界（{case['label']}）")
         resp = comment(received_order, content=content)
         assert_no_server_error(resp)
         status = resp.json().get("status")
-        if should_succeed:
-            assert status == 1, f"评分合法却提交失败：{resp.text}"
+        if case["should_succeed"]:
+            assert status == 1, f"内容合法却提交失败：{resp.text}"
         else:
-            assert status != 1, f"非法评分未被拒绝：{resp.text}"
+            assert status != 1, f"非法内容未被拒绝：{resp.text}"
 
     def test_FORDER_011_content_xss(self, received_order):
         title("FORDER-011", "评价内容 XSS")
-        payload = "<script>alert(1)</script>"
+        payload = FRONT["xss_payload"]
         resp = comment(received_order, content=payload)
         assert_business(resp, expected=1)
         detail = received_order.account.client.order.order_detail(received_order.id)
@@ -201,7 +156,10 @@ class TestFrontOrder:
     def test_FORDER_012_comment_without_login(self, received_order, anon):
         title("FORDER-012", "未登录评价")
         resp = anon.order.comment(
-            received_order.id, received_order.goods_id, received_order.rec_id, "x"
+            received_order.id,
+            received_order.goods_id,
+            received_order.rec_id,
+            COMMON["comment"]["short"],
         )
         assert_no_server_error(resp)
         if "json" in (resp.headers.get("Content-Type") or "").lower():
@@ -215,7 +173,7 @@ class TestFrontOrder:
             order_id=shipped_order.id,
             goods_id=shipped_order.goods_id,
             rec_id=shipped_order.rec_id,
-            content="未收货评价",
+            content=COMMON["comment"]["before_receipt"],
         )
         assert_no_server_error(resp)
         assert resp.json().get("status") != 1, "未确认收货仍可评价"
@@ -226,10 +184,7 @@ class TestFrontOrder:
             order_id=commented_order.id,
             goods_id=commented_order.goods_id,
             rec_id=commented_order.rec_id,
-            content="第二次评价",
+            content=COMMON["comment"]["repeat"],
         )
         assert_no_server_error(resp)
         assert resp.json().get("status") != 1, "同一订单可重复评价"
-
-
-

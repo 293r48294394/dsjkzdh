@@ -2,6 +2,7 @@
 
 注意 TPshop 状态机顺序：后台付款会把 order_status 重置为 0，
 因此必须先“付款”再“确认”，最后“发货”。
+参数、边界值与缺陷标记统一放在 `data/admin_order.yaml`。
 """
 import allure
 import pytest
@@ -14,9 +15,11 @@ from utils.assert_util import (
     assert_text_contains,
 )
 from utils.contracts import ADMIN_ACTION_SUCCESS
+from utils.data_util import expand_text, load_data, param_cases
 
 
 FEATURE = "后台确认订单"
+ADMIN_ORDER = load_data("admin_order")
 
 
 def title(case_id, text):
@@ -49,18 +52,13 @@ class TestAdminOrder:
     )
     def test_ADMORDER_003_confirm_order_not_exist(self, admin):
         title("ADMORDER-003", "order_id 不存在")
-        resp = admin.admin.confirm("999999")
+        resp = admin.admin.confirm(ADMIN_ORDER["invalid_order_id"])
         assert_no_server_error(resp)
         assert_business(resp, expected=0)
 
-    @pytest.mark.parametrize(
-        "note",
-        [
-            pytest.param("", id="ADMORDER-004-note缺省"),
-            pytest.param("测" * 200, id="ADMORDER-004-note超长"),
-        ],
-    )
-    def test_ADMORDER_004_note(self, admin, paid_order, note):
+    @pytest.mark.parametrize("case", param_cases(ADMIN_ORDER["note"]))
+    def test_ADMORDER_004_note(self, admin, paid_order, case):
+        note = case["value"] if "value" in case else expand_text(case["repeat"])
         title("ADMORDER-004", f"note 选填与长度边界（{len(note)} 字）")
         resp = admin.admin.confirm(paid_order.id, note=note)
         assert_no_server_error(resp)
@@ -116,7 +114,7 @@ class TestAdminOrder:
     )
     def test_ADMORDER_011_delivery_info_not_exist(self, admin):
         title("ADMORDER-011", "发货页面订单 ID 不存在")
-        resp = admin.admin.delivery_info("999999")
+        resp = admin.admin.delivery_info(ADMIN_ORDER["invalid_order_id"])
         assert_no_server_error(resp)
 
     def test_ADMORDER_012_delivery_info_without_login(self, anon, confirmed_order):
@@ -133,37 +131,26 @@ class TestAdminOrder:
         assert_no_server_error(resp)
         assert_text_contains(resp, "操作成功")
 
-    @pytest.mark.xfail(
-        reason="新缺陷：未校验 shipping_name / shipping_code 必填", strict=False
-    )
     @pytest.mark.parametrize(
-        "omit",
-        [
-            pytest.param(("shipping_name",), id="ADMORDER-014-缺快递公司名"),
-            pytest.param(("shipping_code",), id="ADMORDER-014-缺快递公司编码"),
-        ],
+        "case", param_cases(ADMIN_ORDER["shipping_required"])
     )
-    def test_ADMORDER_014_shipping_required(self, admin, confirmed_order, omit):
-        title("ADMORDER-014", f"快递公司参数缺失（{omit[0]}）")
+    def test_ADMORDER_014_shipping_required(self, admin, confirmed_order, case):
+        title("ADMORDER-014", f"快递公司参数缺失（{case['omit'][0]}）")
         rec_id = rec_id_of(admin, confirmed_order)
-        resp = admin.admin.delivery(confirmed_order.id, rec_id, omit=omit)
+        resp = admin.admin.delivery(
+            confirmed_order.id, rec_id, omit=case["omit"]
+        )
         assert_no_server_error(resp)
         assert "操作成功" not in resp.text
 
-    @pytest.mark.xfail(
-        reason="新缺陷：invoice_no 非数字/超长未被拒绝或截断", strict=False
-    )
-    @pytest.mark.parametrize(
-        "invoice_no",
-        [
-            pytest.param("abc", id="ADMORDER-015-非数字"),
-            pytest.param("9" * 20, id="ADMORDER-015-超长"),
-        ],
-    )
-    def test_ADMORDER_015_invoice_invalid(self, admin, confirmed_order, invoice_no):
+    @pytest.mark.parametrize("case", param_cases(ADMIN_ORDER["invoice_invalid"]))
+    def test_ADMORDER_015_invoice_invalid(self, admin, confirmed_order, case):
+        invoice_no = case["value"] if "value" in case else expand_text(case["repeat"])
         title("ADMORDER-015", f"快递单号取值异常（{invoice_no[:8]}）")
         rec_id = rec_id_of(admin, confirmed_order)
-        resp = admin.admin.delivery(confirmed_order.id, rec_id, invoice_no=invoice_no)
+        resp = admin.admin.delivery(
+            confirmed_order.id, rec_id, invoice_no=invoice_no
+        )
         assert_no_server_error(resp)
         assert "操作成功" not in resp.text
 
