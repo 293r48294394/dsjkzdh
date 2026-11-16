@@ -1,0 +1,11 @@
+# 全链路联调测试数据（E2E-001 ~ E2E-033 可自动化部分）
+
+unregistered:
+  username: "13900000099"
+  password: "Abc@12345"
+
+invalid_address: 999999
+add_goods_num: 2
+
+order_status_words: ["待收货", "已发货", "确认收货"]
+pay_status_words: ["已付款", "已支付"]

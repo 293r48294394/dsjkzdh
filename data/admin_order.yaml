@@ -1,0 +1,29 @@
+# 后台订单模块测试数据（ADMORDER-001 ~ ADMORDER-018）
+
+note:
+  - id: ADMORDER-004-note缺省
+    value: ""
+  - id: ADMORDER-004-note超长
+    repeat:
+      char: "测"
+      times: 200
+
+shipping_required:
+  - id: ADMORDER-014-缺快递公司名
+    omit: [shipping_name]
+    bug: "新缺陷：未校验 shipping_name / shipping_code 必填"
+  - id: ADMORDER-014-缺快递公司编码
+    omit: [shipping_code]
+    bug: "新缺陷：未校验 shipping_name / shipping_code 必填"
+
+invoice_invalid:
+  - id: ADMORDER-015-非数字
+    value: "abc"
+    bug: "新缺陷：invoice_no 非数字/超长未被拒绝或截断"
+  - id: ADMORDER-015-超长
+    repeat:
+      char: "9"
+      times: 20
+    bug: "新缺陷：invoice_no 非数字/超长未被拒绝或截断"
+
+invalid_order_id: "999999"

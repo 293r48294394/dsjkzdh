@@ -1,0 +1,25 @@
+# 支付验证模块测试数据（PAY-001 ~ PAY-012）
+
+pay_radio_missing:
+  request:
+    omit: [pay_radio]
+  needle: pay_code
+
+pay_radio_invalid:
+  id: PAY-003
+  title: pay_radio 取值非法（weixin）
+  value: "pay_code=weixin"
+  bug: "PAY-003 缺陷：未定义支付方式未被拒绝，进入微信支付流程后才失败"
+
+order_id_invalid:
+  - id: PAY-004-缺order_id
+    request:
+      omit: [order_id]
+    needle: 非法操作
+  - id: PAY-005-订单不存在
+    request:
+      order_id: "999999"
+    needle: 非法操作
+
+master_order_sn: ["", "not_exist_sn"]
+invalid_order_sn: "202299999999999999"

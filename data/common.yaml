@@ -1,0 +1,11 @@
+# 跨模块共用的测试数据
+password: "Abc@12345"
+
+comment:
+  default: "自动化测试评价"
+  full_flow: "新用户全链路自动化评价"
+  logistics: "物流很快"
+  before_receipt: "未收货评价"
+  first: "第一次评价"
+  repeat: "重复评价"
+  short: "x"

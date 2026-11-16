@@ -1,0 +1,128 @@
+# 注册登录模块测试数据（AUTH-001 ~ AUTH-036）
+
+register_negative:
+  - id: AUTH-007
+    title: 图形验证码错误
+    request:
+      verify_code: "0000"
+    expect_status: -1
+    expect_msg: 图像验证码错误
+  - id: AUTH-008
+    title: 两次密码不一致
+    request:
+      password: "Abc@12345"
+      password2: "Different1"
+    expect_status: -1
+    expect_msg: 两次密码不一致
+
+auth_code:
+  - id: AUTH-009-auth_code缺失
+    title: auth_code 缺失
+    request:
+      omit: [auth_code]
+    expect_status: -1
+    bug: "新缺陷：注册接口未校验 auth_code，缺失/错误仍可注册成功"
+  - id: AUTH-010-auth_code错误
+    title: auth_code 取值错误
+    request:
+      auth_code: "TEST"
+    expect_status: -1
+    bug: "新缺陷：注册接口未校验 auth_code，缺失/错误仍可注册成功"
+
+scene_missing:
+  id: AUTH-011
+  title: scene 缺失
+  request:
+    omit: [scene]
+  expect_status: -1
+  bug: "新缺陷：注册接口不校验 scene，缺失仍可注册成功"
+
+scene_invalid:
+  - id: AUTH-012-scene99
+    value: "99"
+  - id: AUTH-012-sceneabc
+    value: "abc"
+
+username_invalid:
+  - id: AUTH-014-非手机号
+    value: "abc"
+  - id: AUTH-014-超长
+    value: "138000000000000"
+  - id: AUTH-014-含字母
+    value: "1380000abcd"
+username_format_msg: 请用手机号或邮箱注册
+
+required_params:
+  - id: AUTH-015
+    title: verify_code 缺失
+    field: verify_code
+    expect_msg: 图像验证码错误
+  - id: AUTH-016
+    title: password 缺失
+    field: password
+    expect_msg: 密码不能为空
+  - id: AUTH-017
+    title: password2 缺失
+    field: password2
+    expect_msg: 两次密码不一致
+
+password_lengths:
+  - id: AUTH-018-5位
+    length: 5
+    should_succeed: false
+    bug: "新缺陷：注册未校验密码最小长度 6"
+  - id: AUTH-018-6位
+    length: 6
+    should_succeed: true
+  - id: AUTH-018-16位
+    length: 16
+    should_succeed: true
+  - id: AUTH-018-17位
+    length: 17
+    should_succeed: false
+    bug: "新缺陷：注册未校验密码最大长度 16"
+
+login_negative:
+  - id: AUTH-029
+    title: 密码错误
+    request:
+      password: "wrong_pwd"
+    expect_status: -2
+    expect_msg: "密码错误!"
+  - id: AUTH-030
+    title: 验证码错误
+    request:
+      verify_code: "0000"
+    expect_status: 0
+    expect_msg: 验证码错误
+  - id: AUTH-031
+    title: 账号不存在
+    request:
+      username: "13900000099"
+    expect_status: -1
+    expect_msg: "账号不存在!"
+  - id: AUTH-032
+    title: 账号为空
+    request:
+      username: ""
+    expect_status: 0
+    expect_msg: 请填写账号或密码
+  - id: AUTH-033
+    title: 密码为空
+    request:
+      password: ""
+    expect_status: 0
+    expect_msg: 请填写账号或密码
+
+verify_code_types: ["abc", "1.5", "", "123456789"]
+t_params: ["", "abc", "0.123456"]
+
+security:
+  register_sql_injection:
+    username: "' or 1=1 --"
+    invite: "<script>alert(1)</script>"
+  login_sql_injection:
+    username: "' or 1=1 --"
+    password: "' or '1'='1"
+  invalid_session_cookie: invalid_session_id_123
+  duplicate_attempts: 5

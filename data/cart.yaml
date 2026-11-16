@@ -1,0 +1,105 @@
+# 购物车与下单模块测试数据（CART-001 ~ CART-028）
+
+add:
+  goods_not_exist:
+    goods_id: 999999
+    expect_msg: 购买商品不存在
+  over_limit:
+    goods_num: 201
+    expect_msg: 购买商品数量大于200
+  at_limit:
+    goods_num: 200
+  quantity_empty:
+    - id: CART-005-数量缺失
+      request:
+        omit: [goods_num]
+    - id: CART-005-数量为0
+      request:
+        goods_num: 0
+  quantity_illegal:
+    - id: CART-006-负数
+      goods_num: -1
+      marker: 负数
+      bug: "BUG-14：负数购买数量加购成功并落库为 0"
+    - id: CART-006-小数
+      goods_num: 1.5
+      marker: 小数
+      bug: "新缺陷：小数数量未拒绝，被按整数处理"
+  quantity_string:
+    goods_num: "abc"
+    expect_msg: 购买商品数量不能为0
+  goods_id_missing:
+    request:
+      omit: [goods_id]
+    expect_msg: 请选择要购买的商品
+  price_tamper:
+    shop_price: "0.01"
+  duplicate:
+    goods_num: 1
+    times: 2
+
+submit:
+  is_virtual_missing:
+    id: CART-015
+    title: is_virtual 缺失
+    request:
+      omit: [is_virtual]
+    bug: "新缺陷：提交订单未校验 is_virtual，缺失仍可下单"
+  address_missing:
+    id: CART-016
+    title: address_id 缺失
+    request:
+      omit: [address_id]
+    expect_msg: 请先填写收货人信息
+  address_not_exist:
+    id: CART-017-不存在
+    title: address_id 不存在
+    request:
+      address_id: 999999
+    bug: "BUG-08：不存在的收货地址仍能生成订单"
+  auth_code_invalid:
+    id: CART-018
+    title: auth_code 取值错误
+    request:
+      auth_code: "TEST"
+    bug: "BUG-15：提交订单的 auth_code 未被校验"
+  is_virtual_mismatch:
+    id: CART-024
+    title: is_virtual 与实际商品类型不符
+    request:
+      is_virtual: "1"
+    bug: "新缺陷：is_virtual 与实际商品类型不符仍可下单"
+  take_time:
+    - id: CART-019-缺省
+      request:
+        omit: [take_time]
+      label: 缺省
+      should_pass: true
+    - id: CART-019-非时间戳
+      request:
+        take_time: "abc"
+      label: 非时间戳
+      should_pass: false
+      bug: "新缺陷：take_time 非时间戳未被拒绝"
+    - id: CART-019-过去
+      request:
+        take_time: "1000000000"
+      label: 过去时间
+      should_pass: false
+      bug: "新缺陷：take_time 过去时间未被拒绝"
+    - id: CART-019-未来
+      request:
+        take_time: "9999999999"
+      label: 未来时间
+      should_pass: false
+      bug: "新缺陷：take_time 未来时间未被拒绝"
+  act_invalid:
+    request:
+      act: "submit"
+    expect_msg: 计算成功
+  empty_cart_msg: 你的购物车没有选中商品
+  repeat_times: 3
+  unauth_status: -100
+
+order:
+  invalid_order_sns: ["202299999999999999", "abc", ""]

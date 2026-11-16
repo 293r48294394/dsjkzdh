@@ -1,0 +1,45 @@
+# 前台订单模块测试数据（FORDER-001 ~ FORDER-014）
+
+comment_required:
+  - id: FORDER-008-缺order_id
+    field: order_id
+  - id: FORDER-008-缺goods_id
+    field: goods_id
+  - id: FORDER-008-缺goods_rank
+    field: goods_rank
+
+rank:
+  - id: FORDER-009-评分0
+    value: "0"
+    should_succeed: false
+  - id: FORDER-009-评分1
+    value: "1"
+    should_succeed: true
+  - id: FORDER-009-评分5
+    value: "5"
+    should_succeed: true
+  - id: FORDER-009-评分6
+    value: "6"
+    should_succeed: false
+    bug: "BUG-12：评分 6 未被拒绝，直接落库"
+
+content:
+  - id: FORDER-010-空串
+    value: ""
+    label: 空串
+    should_succeed: false
+    bug: "BUG-13：空评价仍成功"
+  - id: FORDER-010-超长
+    repeat:
+      char: "测"
+      times: 2000
+    label: 2000字
+    should_succeed: false
+    bug: "R-02：评价内容无长度限制"
+  - id: FORDER-010-纯空格
+    value: "   "
+    label: 纯空格
+    should_succeed: false
+    bug: "新缺陷：纯空格评价仍成功"
+
+xss_payload: "<script>alert(1)</script>"
